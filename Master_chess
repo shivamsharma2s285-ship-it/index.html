@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Master Chess - Luxury Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <style>
+        :root { --gold: #d4af37; --wood: #2d1b18; --bg: #0a0a0a; --light-sq: #f0d9b5; --dark-sq: #b58863; }
+        body { margin: 0; background: var(--bg); color: white; font-family: 'Garamond', serif; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+
+        /* --- MENU --- */
+        #main-menu { position: absolute; width: 100%; height: 100%; z-index: 100; background: radial-gradient(circle, #1a1a1a 0%, #000 100%); display: flex; flex-direction: column; align-items: center; padding: 20px; box-sizing: border-box; }
+        h1 { font-size: 3rem; color: var(--gold); text-shadow: 3px 3px 10px rgba(212,175,55,0.3); margin: 10px 0; letter-spacing: 5px; }
+        
+        .hero-board-3d {
+            width: 240px; height: 200px; margin: 20px 0;
+            background: repeating-conic-gradient(var(--light-sq) 0% 25%, var(--dark-sq) 0% 50%) 50% / 30px 30px;
+            transform: perspective(600px) rotateX(45deg) rotateZ(-15deg);
+            border: 10px solid var(--wood); box-shadow: 0 30px 60px rgba(0,0,0,0.8);
+            position: relative; overflow: hidden;
+        }
+        /* Barabar Pieces on Menu Board */
+        .hero-board-3d::before {
+            content: '♜ ♞ ♝ ♛ ♚ ♝ ♞ ♜ \n ♟ ♟ ♟ ♟ ♟ ♟ ♟ ♟ \n \n \n \n \n ♙ ♙ ♙ ♙ ♙ ♙ ♙ ♙ \n ♖ ♘ ♗ ♕ ♔ ♗ ♘ ♖';
+            white-space: pre; font-size: 18px; color: #000; position: absolute; width: 100%; text-align: center; line-height: 25px; top: 5px; font-weight: bold;
+        }
+
+        .menu-container { width: 320px; background: rgba(255,255,255,0.05); padding: 20px; border-radius: 20px; border: 1px solid var(--gold); text-align: center; }
+        input[type=range] { width: 100%; accent-color: var(--gold); margin: 15px 0; }
+        .mode-options { display: flex; gap: 10px; margin-bottom: 20px; }
+        .opt-btn { flex: 1; padding: 12px; background: #222; border: 1px solid #444; color: white; border-radius: 10px; cursor: pointer; font-weight: bold; }
+        .opt-btn.active { border-color: var(--gold); background: var(--wood); }
+        .play-btn { width: 100%; padding: 15px; font-size: 1.5rem; background: var(--gold); border: none; border-radius: 50px; cursor: pointer; font-weight: bold; color: black; }
+
+        /* --- GAME --- */
+        #game-screen { display: none; flex-direction: column; align-items: center; width: 100%; height: 100%; justify-content: center; }
+        .top-controls { position: absolute; top: 15px; width: 95%; display: flex; justify-content: space-around; align-items: center; z-index: 50; }
+        .control-btn { padding: 8px 12px; border-radius: 20px; background: var(--wood); border: 2px solid var(--gold); color: var(--gold); cursor: pointer; font-weight: bold; font-size: 11px; }
+
+        #board-container { border: 10px solid var(--wood); border-radius: 5px; box-shadow: 0 0 50px rgba(0,0,0,1); margin-top: 40px; }
+        #board { display: grid; grid-template-columns: repeat(8, 11vw); grid-template-rows: repeat(8, 11vw); max-width: 450px; max-height: 450px; }
+        .sq { width: 11vw; height: 11vw; max-width: 56px; max-height: 56px; display: flex; justify-content: center; align-items: center; font-size: 35px; position: relative; }
+        
+        /* Guide Dots */
+        .hint::after { content: ''; width: 15px; height: 15px; background: rgba(0, 255, 0, 0.4); border-radius: 50%; position: absolute; }
+        .selected { background: rgba(212, 175, 55, 0.6) !important; }
+        
+        #timer { font-family: monospace; font-size: 1.4rem; color: var(--gold); }
+        #status { color: var(--gold); font-weight: bold; margin-top: 10px; font-size: 1.2rem; }
+    </style>
+</head>
+<body>
+
+    <div id="main-menu">
+        <h1>MASTER CHESS</h1>
+        <div class="hero-board-3d"></div>
+        <div class="menu-container">
+            <label id="diff-label">DIFFICULTY: MEDIUM</label>
+            <input type="range" id="diff-slider" min="1" max="4" value="2" oninput="updateDiff()">
+            <div class="mode-options">
+                <button id="m-pvc" class="opt-btn active" onclick="setMode('pvc')">CPU</button>
+                <button id="m-pvp" class="opt-btn" onclick="setMode('pvp')">PLAYER</button>
+            </div>
+            <button class="play-btn" onclick="startGame()">PLAY GAME</button>
+        </div>
+    </div>
+
+    <div id="game-screen">
+        <div class="top-controls">
+            <button class="control-btn" onclick="rewindMove()">REWIND</button>
+            <div id="timer">00:00</div>
+            <button class="control-btn" onclick="aiContinue()">CONTINUE AI</button>
+            <button class="control-btn" onclick="location.reload()">EXIT</button>
+        </div>
+        <div id="board-container"><div id="board"></div></div>
+        <div id="status">White's Turn</div>
+    </div>
+
+<script>
+    const game = new Chess();
+    const boardEl = document.getElementById('board');
+    let gameMode = 'pvc', selectedSq = null, hints = [], timerInterval, seconds = 0;
+    const pieces = {'p': '♟', 'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚', 'P': '♙', 'R': '♖', 'N': '♘', 'B': '♗', 'Q': '♕', 'K': '♔'};
+
+    function updateDiff() { document.getElementById('diff-label').innerText = "DIFFICULTY: " + {1:"EASY",2:"MEDIUM",3:"HARD",4:"VERY HARD"}[document.getElementById('diff-slider').value]; }
+    function setMode(m) { gameMode = m; document.getElementById('m-pvc').classList.toggle('active', m === 'pvc'); document.getElementById('m-pvp').classList.toggle('active', m === 'pvp'); }
+    function startGame() { 
+        document.getElementById('main-menu').style.display = 'none'; 
+        document.getElementById('game-screen').style.display = 'flex'; 
+        timerInterval = setInterval(() => { seconds++; document.getElementById('timer').innerText = Math.floor(seconds/60).toString().padStart(2,'0') + ":" + (seconds%60).toString().padStart(2,'0'); }, 1000);
+        render(); 
+    }
+
+    function render() {
+        boardEl.innerHTML = '';
+        const state = game.board();
+        for(let r=0; r<8; r++) {
+            for(let c=0; c<8; c++) {
+                const name = String.fromCharCode(97+c)+(8-r);
+                const sq = document.createElement('div');
+                sq.className = 'sq' + (selectedSq === name ? ' selected' : '') + (hints.includes(name) ? ' hint' : '');
+                sq.style.background = (r+c)%2===0 ? '#f0d9b5' : '#b58863';
+                const p = state[r][c];
+                if(p) { sq.textContent = pieces[p.color === 'w' ? p.type.toUpperCase() : p.type.toLowerCase()]; sq.style.color = p.color === 'w' ? '#000' : '#3d0000'; }
+                sq.onclick = () => {
+                    if(gameMode === 'pvc' && game.turn() === 'b' || game.game_over()) return;
+                    const move = game.move({ from: selectedSq || '', to: name, promotion: 'q' });
+                    if(move) { selectedSq = null; hints = []; render(); updateStatus(); if(gameMode === 'pvc' && !game.game_over()) setTimeout(makeAI, 500); }
+                    else { 
+                        const piece = game.get(name); 
+                        if(piece && piece.color === game.turn()) { 
+                            selectedSq = name; 
+                            hints = game.moves({ square: name, verbose: true }).map(m => m.to);
+                        } else { selectedSq = null; hints = []; }
+                        render();
+                    }
+                };
+                boardEl.appendChild(sq);
+            }
+        }
+    }
+
+    function makeAI() { const m = game.moves(); if(m.length>0) { game.move(m[Math.floor(Math.random()*m.length)]); render(); updateStatus(); } }
+    function rewindMove() { game.undo(); if(gameMode==='pvc') game.undo(); render(); updateStatus(); }
+    function aiContinue() { makeAI(); }
+    function updateStatus() {
+        let s = game.turn() === 'w' ? "White's Turn" : "Black's Turn";
+        if(game.in_checkmate()) s = game.turn()==='w'?"BLACK WINS!":"WHITE WINS!";
+        else if(game.in_draw()) s = "MATCH DRAWN!";
+        document.getElementById('status').innerText = s;
+    }
+</script>
+</body>
+</html>
+
